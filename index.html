@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tabulador JSON</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="./styles/styles.css">
+</head>
+
+<body>
+    <div class="app">
+
+        <header class="top">
+            <div class="brand">
+                <span class="mark">JSON → TABLA</span>
+                <h1>Tabulador JSON</h1>
+                <p>Pega o carga cualquier JSON y se convierte en una tabla legible, con soporte para objetos y arreglos
+                    anidados.</p>
+                <br>
+                <p>
+                    <strong>
+                        (Recuerda eliminar el fragmento [REST] aux_json= o similar si lo contiene)
+                    </strong>
+                </p>
+            </div>
+            <div class="shape-badge" id="shapeBadge">esperando datos…</div>
+        </header>
+
+        <details class="input-acc" id="inputAcc" open>
+            <summary>Entrada JSON</summary>
+            <div class="input-body">
+                <textarea id="jsonInput"
+                    placeholder='Pega tu JSON aquí, por ejemplo: [{"nombre":"Ana","edad":29},{"nombre":"Luis","edad":34}]'></textarea>
+                <div class="row">
+                    <button class="primary" id="btnRender">Tabular</button>
+                    <button id="btnExample">Cargar ejemplo</button>
+                    <label class="file-label" for="fileInput">Cargar archivo .json</label>
+                    <input type="file" id="fileInput" accept=".json,application/json">
+                    <button id="btnClear">Limpiar</button>
+                </div>
+            </div>
+        </details>
+
+        <div class="toolbar" id="toolbar" style="display:none;">
+            <div class="search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="M21 21l-4.3-4.3" />
+                </svg>
+                <input type="text" id="filterInput" placeholder="Filtrar filas visibles…">
+            </div>
+            <button id="btnCsv" style="display:none;">Descargar CSV</button>
+        </div>
+
+        <div id="output"></div>
+
+    </div>
+    <script src="./js/index.js"></script>
+</body>
+
+</html>
