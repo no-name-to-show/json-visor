@@ -75,6 +75,15 @@
         repairText: null,
     };
 
+    // Límites defensivos: protegen la pestaña de entradas gigantes o patrones costosos
+    const LIMITS = {
+        SOFT_CHARS: 10e6,      // pide confirmación
+        HARD_CHARS: 50e6,      // se rechaza
+        REGEX_LEN: 200,        // longitud máxima de una regex de búsqueda
+        REGEX_TEXT: 2000,      // caracteres máximos evaluados por valor al usar regex
+        SEARCH_MS: 3000,       // tiempo máximo de una búsqueda
+    };
+
     const SAMPLE_PREFIX = '[REST] aux_json=';
     const EXAMPLE_DATA = {
         ok: true,
@@ -500,6 +509,9 @@
         const esc = (v) => {
             if (v === undefined || v === null) return '';
             let s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+            // Inyección de fórmulas: Excel interpreta como fórmula el texto que empieza con = + - @ (o tab/CR).
+            // Solo se neutraliza el TEXTO; los números reales se dejan intactos.
+            if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s) && !/^[+-]?\d+([.,]\d+)?$/.test(s)) s = "'" + s;
             if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
             return s;
         };
@@ -631,9 +643,19 @@
         if (!q) return null;
         const cs = dom.searchCase.checked;
         if (dom.searchRegex.checked) {
+            if (q.length > LIMITS.REGEX_LEN) return { error: `el patrón supera ${LIMITS.REGEX_LEN} caracteres` };
+            // Cuantificadores anidados, p. ej. (a+)+ , provocan backtracking catastrófico y congelan la pestaña
+            if (/\((?:[^()\\]|\\.)*[+*}](?:[^()\\]|\\.)*\)\s*[+*{]/.test(q)) {
+                return { error: 'el patrón tiene cuantificadores anidados, como (a+)+, que pueden congelar la página; simplifícalo' };
+            }
             let re;
             try { re = new RegExp(q, cs ? '' : 'i'); } catch (e) { return { error: e.message }; }
-            return { find: (s) => { const m = re.exec(s); return m ? [m.index, m.index + m[0].length] : null; } };
+            return {
+                find: (s) => {
+                    const m = re.exec(s.length > LIMITS.REGEX_TEXT ? s.slice(0, LIMITS.REGEX_TEXT) : s);
+                    return m ? [m.index, m.index + m[0].length] : null;
+                },
+            };
         }
         const needle = cs ? q : q.toLowerCase();
         if (dom.searchExact.checked) {
@@ -665,9 +687,13 @@
         let total = 0;
         const CAP = 5000, SHOW = 300;
         const segs = [];
+        const t0 = Date.now();
+        let visited = 0;
+        let timedOut = false;
 
         function walk(v) {
-            if (total >= CAP) return;
+            if (total >= CAP || timedOut) return;
+            if ((++visited & 511) === 0 && Date.now() - t0 > LIMITS.SEARCH_MS) { timedOut = true; return; }
             if (isPrimitive(v)) {
                 if (scope !== 'keys') {
                     const s = v === null ? 'null' : String(v);
@@ -688,12 +714,13 @@
                 }
                 walk(v[k]);
                 segs.pop();
-                if (total >= CAP) return;
+                if (total >= CAP || timedOut) return;
             }
         }
         walk(state.root);
 
-        dom.searchInfo.textContent = total === 0 ? 'Sin coincidencias.' : `${total >= CAP ? CAP + '+' : total} coincidencia(s)` + (total > SHOW ? ` · mostrando las primeras ${SHOW}` : '');
+        dom.searchInfo.textContent = total === 0 ? 'Sin coincidencias.' : `${total >= CAP ? CAP + '+' : total} coincidencia(s)` + (total > SHOW ? ` · mostrando las primeras ${SHOW}` : '') +
+            (timedOut ? ` · búsqueda interrumpida a los ${LIMITS.SEARCH_MS / 1000} s (resultados parciales)` : '');
         dom.searchResults.innerHTML = `<div class="res-list">` + results.map((r) =>
             `<div class="res"><span class="p" data-path="${escapeHtml(r.path)}" title="Ver en el árbol">${escapeHtml(r.path)}</span><span class="v">${r.kind === 'clave' ? '<span class="muted">clave · </span>' : ''}${highlight(r.text, r.range)}</span></div>`).join('') + `</div>`;
     }
@@ -738,6 +765,7 @@
     function runCompare() {
         const raw = dom.compareInput.value;
         if (!raw.trim()) { dom.compareResults.innerHTML = '<div class="empty-state">Pega el JSON B para comparar.</div>'; return; }
+        if (raw.length > LIMITS.HARD_CHARS) { dom.compareResults.innerHTML = '<div class="empty-state">El JSON B es demasiado grande.</div>'; return; }
         const res = JT.parseSmart(raw);
         if (!res.ok) {
             dom.compareResults.innerHTML = `<div class="err-card"><h3>El JSON B no es válido</h3><div class="where">${escapeHtml(res.error.message)} · línea ${res.error.line}, columna ${res.error.col}</div>${res.error.hint ? `<p class="hint">${escapeHtml(res.error.hint)}</p>` : ''}</div>`;
@@ -836,6 +864,15 @@
         dom.shapeBadge.textContent = 'esperando datos…';
     }
 
+    function showLimit(chars) {
+        resetToEmpty();
+        dom.emptyState.style.display = 'none';
+        dom.shapeBadge.textContent = 'entrada demasiado grande';
+        dom.inputAcc.open = true;
+        dom.errorPanel.innerHTML = `<div class="err-card"><h3>La entrada es demasiado grande</h3>
+            <p class="hint">Tiene ${(chars / 1e6).toFixed(1)} millones de caracteres y el límite es ${LIMITS.HARD_CHARS / 1e6}. Para evitar que la página se congele, recorta el JSON o extrae solo la parte que necesitas.</p></div>`;
+    }
+
     function loadRoot(res, notes) {
         state.root = res.value;
         state.jsonText = res.text.slice(res.start, res.end);
@@ -865,6 +902,9 @@
     function run() {
         const raw = dom.input.value;
         if (!raw.trim()) { resetToEmpty(); return; }
+        if (raw.length > LIMITS.HARD_CHARS) { showLimit(raw.length); return; }
+        if (raw.length > LIMITS.SOFT_CHARS &&
+            !window.confirm(`El texto tiene ${(raw.length / 1e6).toFixed(1)} millones de caracteres; analizarlo puede tardar y ralentizar la pestaña. ¿Continuar?`)) return;
         const res = JT.parseSmart(raw);
         state.parse = res;
         const notes = res.notes.concat(state.extraNotes);
@@ -891,6 +931,7 @@
 
     function loadFile(file) {
         if (!file) return;
+        if (file.size > LIMITS.HARD_CHARS) { showLimit(file.size); return; }
         const reader = new FileReader();
         reader.onload = () => { dom.input.value = reader.result; run(); };
         reader.readAsText(file);

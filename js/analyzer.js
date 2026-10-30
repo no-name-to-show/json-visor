@@ -117,7 +117,7 @@
                 if (/Ã[\u0080-¿]|Â[ -¿]|â€|�/.test(s)) flag(e, 'mojibake');
                 if (/\\u[0-9a-fA-F]{4}|\\n|\\r|\\t/.test(s)) flag(e, 'escaped');
                 if (s.length > 2000) flag(e, 'longStr');
-                if ((s[0] === '{' || s[0] === '[') && s.length > 1 && embeddedTries < 300) {
+                if ((s[0] === '{' || s[0] === '[') && s.length > 1 && s.length < 1e6 && embeddedTries < 300) {
                     embeddedTries++;
                     try { const r = JSON.parse(s); if (r !== null && typeof r === 'object') flag(e, 'embedded'); } catch (_) { /* no es JSON */ }
                 }

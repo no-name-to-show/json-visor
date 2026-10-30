@@ -19,6 +19,7 @@
     }
 
     const IDENT = /^[A-Za-z_$][\w$]*$/;
+    const MAX_DEPTH = 500; // evita desbordar la pila con anidaciones maliciosas
 
     function pathToString(segs) {
         let s = '$';
@@ -188,6 +189,7 @@
 
         function object() {
             open.push({ ch: '{', pos: i });
+            if (open.length > MAX_DEPTH) fail(`Anidación excesiva (más de ${MAX_DEPTH} niveles)`, i, 'Un JSON legítimo casi nunca supera esa profundidad; puede ser un dato corrupto o malicioso.');
             i++;
             const obj = Object.create(null);
             const seen = new Set();
@@ -229,6 +231,7 @@
 
         function array() {
             open.push({ ch: '[', pos: i });
+            if (open.length > MAX_DEPTH) fail(`Anidación excesiva (más de ${MAX_DEPTH} niveles)`, i, 'Un JSON legítimo casi nunca supera esa profundidad; puede ser un dato corrupto o malicioso.');
             i++;
             const arr = [];
             ws();
@@ -546,11 +549,15 @@
             if (/,\s*$/.test(out)) out = out.replace(/,(\s*)$/, '$1');
             if (/:\s*$/.test(out)) { out += 'null'; add('Valores faltantes completados con null'); }
             // clave suelta sin ":" al final (texto truncado)
-            if (stack[stack.length - 1] === '}' && /[{,]\s*"(?:[^"\\]|\\.)*"\s*$/.test(out)) {
-                out = out.replace(/(,?)\s*"(?:[^"\\]|\\.)*"\s*$/, '');
-                if (/,\s*$/.test(out)) out = out.replace(/,(\s*)$/, '$1');
+            const tailLen = 4000; // las regex solo miran la cola: evita backtracking en textos enormes
+            let head = out.slice(0, -tailLen);
+            let tail = out.slice(-tailLen);
+            if (stack[stack.length - 1] === '}' && /[{,]\s*"(?:[^"\\]|\\.)*"\s*$/.test(tail)) {
+                tail = tail.replace(/(,?)\s*"(?:[^"\\]|\\.)*"\s*$/, '');
+                if (/,\s*$/.test(tail)) tail = tail.replace(/,(\s*)$/, '$1');
                 add('Clave incompleta al final eliminada');
             }
+            out = head + tail;
             out += stack.reverse().join('');
             add(`JSON truncado: se cerraron ${stack.length} estructura(s)`);
         }
