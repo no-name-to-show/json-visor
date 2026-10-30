@@ -4,13 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tabulador JSON</title>
+    <title>Analizador JSON · Soporte</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link
         href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="./styles/styles.css">
-
 </head>
 
 <body>
@@ -18,16 +17,13 @@
 
         <header class="top">
             <div class="brand">
-                <span class="mark">JSON → TABLA</span>
-                <h1>Tabulador JSON</h1>
-                <p>Pega o carga cualquier JSON y se convierte en una tabla legible, con soporte para objetos y arreglos
-                    anidados.</p>
-                <br>
-                <p>
-                    <strong>
-                        (Recuerda eliminar el fragmento [REST] aux_json= o similar si lo contiene)
-                    </strong>
-                </p>
+                <span class="mark">JSON · ANÁLISIS PARA SOPORTE</span>
+                <h1>Analizador JSON</h1>
+                <p>Pega o carga un JSON para verlo como tabla o árbol, buscar dentro de él y detectar problemas de
+                    datos.
+                    Todo se procesa en tu navegador: nada se envía a ningún servidor.</p>
+                <p class="tip"><strong>Prefijos como <code>[REST] aux_json=</code>, bloques ``` o JSON serializado como
+                        texto se limpian automáticamente.</strong></p>
             </div>
             <div class="shape-badge" id="shapeBadge">esperando datos…</div>
         </header>
@@ -35,32 +31,124 @@
         <details class="input-acc" id="inputAcc" open>
             <summary>Entrada JSON</summary>
             <div class="input-body">
-                <textarea id="jsonInput"
-                    placeholder='Pega tu JSON aquí, por ejemplo: [{"nombre":"Ana","edad":29},{"nombre":"Luis","edad":34}]'></textarea>
+                <textarea id="jsonInput" spellcheck="false"
+                    placeholder='Pega tu JSON aquí (o arrastra un archivo). Ej.: [{"nombre":"Ana","edad":29},{"nombre":"Luis","edad":34}]'></textarea>
                 <div class="row">
-                    <button class="primary" id="btnRender">Tabular</button>
+                    <button class="primary" id="btnRender">Analizar</button>
                     <button id="btnExample">Cargar ejemplo</button>
-                    <label class="file-label" for="fileInput">Cargar archivo .json</label>
-                    <input type="file" id="fileInput" accept=".json,application/json">
+                    <label class="file-label" for="fileInput">Cargar archivo .json / .txt / .log</label>
+                    <input type="file" id="fileInput" accept=".json,.txt,.log,application/json,text/plain">
                     <button id="btnClear">Limpiar</button>
+                    <span class="hint-inline">Ctrl + Enter para analizar</span>
                 </div>
             </div>
         </details>
 
-        <div class="toolbar" id="toolbar" style="display:none;">
-            <div class="search">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="11" cy="11" r="8" />
-                    <path d="M21 21l-4.3-4.3" />
-                </svg>
-                <input type="text" id="filterInput" placeholder="Filtrar filas visibles…">
-            </div>
-            <button id="btnCsv" style="display:none;">Descargar CSV</button>
+        <div id="notice"></div>
+        <div id="errorPanel"></div>
+
+        <div id="workspace" style="display:none;">
+            <nav class="tabs" id="tabs" role="tablist">
+                <button class="tab active" data-tab="analysis" role="tab">Análisis <span class="count"
+                        id="tabFindings"></span></button>
+                <button class="tab" data-tab="table" role="tab">Tabla</button>
+                <button class="tab" data-tab="tree" role="tab">Árbol</button>
+                <button class="tab" data-tab="search" role="tab">Buscar</button>
+                <button class="tab" data-tab="text" role="tab">Texto</button>
+                <button class="tab" data-tab="compare" role="tab">Comparar</button>
+            </nav>
+
+            <section class="panel active" id="panel-analysis"></section>
+
+            <section class="panel" id="panel-table">
+                <div class="toolbar">
+                    <label class="field">Origen de la tabla
+                        <select id="tableSource"></select>
+                    </label>
+                    <div class="search">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="11" cy="11" r="8" />
+                            <path d="M21 21l-4.3-4.3" />
+                        </svg>
+                        <input type="text" id="filterInput" placeholder="Filtrar filas…">
+                    </div>
+                    <label class="check" id="flattenWrap"><input type="checkbox" id="flattenCsv" checked> Aplanar
+                        anidados en CSV</label>
+                    <button id="btnCsv">Descargar CSV</button>
+                </div>
+                <div id="tableInfo" class="muted small"></div>
+                <div id="output"></div>
+            </section>
+
+            <section class="panel" id="panel-tree">
+                <div class="toolbar">
+                    <button id="treeExpand">Expandir 2 niveles</button>
+                    <button id="treeCollapse">Contraer todo</button>
+                    <span class="muted small">Clic en una clave para copiar su ruta.</span>
+                </div>
+                <div id="treeRoot" class="tree"></div>
+            </section>
+
+            <section class="panel" id="panel-search">
+                <div class="toolbar">
+                    <div class="search wide">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="11" cy="11" r="8" />
+                            <path d="M21 21l-4.3-4.3" />
+                        </svg>
+                        <input type="text" id="searchInput" placeholder="Buscar en claves y valores de todo el JSON…">
+                    </div>
+                    <label class="field">Dónde
+                        <select id="searchScope">
+                            <option value="both">Claves y valores</option>
+                            <option value="keys">Solo claves</option>
+                            <option value="values">Solo valores</option>
+                        </select>
+                    </label>
+                    <label class="check"><input type="checkbox" id="searchCase"> Distinguir mayúsculas</label>
+                    <label class="check"><input type="checkbox" id="searchExact"> Coincidencia exacta</label>
+                    <label class="check"><input type="checkbox" id="searchRegex"> Regex</label>
+                </div>
+                <div id="searchInfo" class="muted small"></div>
+                <div id="searchResults"></div>
+            </section>
+
+            <section class="panel" id="panel-text">
+                <div class="toolbar">
+                    <label class="field">Formato
+                        <select id="textMode">
+                            <option value="pretty">Formateado (2 espacios)</option>
+                            <option value="min">Minificado</option>
+                            <option value="orig">Texto original</option>
+                        </select>
+                    </label>
+                    <label class="check"><input type="checkbox" id="textSort"> Ordenar claves A→Z</label>
+                    <button id="btnCopyText">Copiar</button>
+                    <button id="btnDownloadText">Descargar .json</button>
+                </div>
+                <div id="textWarn"></div>
+                <textarea id="textOut" class="code-out" readonly spellcheck="false"></textarea>
+            </section>
+
+            <section class="panel" id="panel-compare">
+                <p class="muted small">Pega un segundo JSON (B) para compararlo contra el cargado (A): útil para
+                    «esperado vs. recibido». Las listas se comparan por posición.</p>
+                <textarea id="compareInput" spellcheck="false" placeholder="Pega aquí el JSON B…"></textarea>
+                <div class="row">
+                    <button class="primary" id="btnCompare">Comparar A con B</button>
+                    <button id="btnSwap">Intercambiar A ↔ B</button>
+                </div>
+                <div id="compareResults"></div>
+            </section>
         </div>
 
-        <div id="output"></div>
+        <div id="emptyState" class="empty-state">Pega un JSON arriba y presiona «Analizar» para empezar.</div>
 
     </div>
+    <script src="./js/parser.js"></script>
+    <script src="./js/analyzer.js"></script>
     <script src="./js/index.js"></script>
 </body>
 
